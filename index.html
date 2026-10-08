@@ -189,9 +189,11 @@ const uid = () => Date.now() + Math.random().toString(16).slice(2, 6);
 const kstToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const today = () => kstToday();
 const days = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);          // b - a (일)
-const dday = (d) => { if (!d) return ''; const n = days(today(), d); return n === 0 ? 'D-day' : n > 0 ? `D-${n}` : `D+${-n}`; };
+const dday = (d) => { if (!isDate(d)) return ''; const n = days(today(), d); return n === 0 ? 'D-day' : n > 0 ? `D-${n}` : `D+${-n}`; };
 const addMonths = (iso, m) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + m); return d.toISOString().slice(0, 10); };
-const fmtD = (d) => d ? d.slice(2).replace(/-/g, '.') : '—';
+const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+const fmtD = (d) => !d ? '—' : (isDate(d) ? d.slice(2).replace(/-/g, '.') : d);   // "10월 중" 같은 글은 그대로
+const when = (v) => !v ? '—' : (isDate(v) ? `${fmtD(v)} ${dday(v)}` : v);           // 날짜면 D-day 붙여서, 글이면 그대로
 const monthsSince = (iso) => { const n = days(iso, today()); return Math.floor(n / 30.4375); };
 function toast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('on'); setTimeout(() => t.classList.remove('on'), 2200); }
 
@@ -201,7 +203,7 @@ const lastActivity = (c) => [c.cancelledAt, c.lastUsedAt, ...(c.spends || []).ma
 // 카드 상태: filling(조건 채우는 중) / waiting(조건 달성, 페이백 대기) / keeping(페이백 받음, 유지기간 중) / done(끝) / expired(마감 지남)
 function status(c) {
   const ev = c.ev || {}; const t = today();
-  if (c.received && (!ev.keepUntil || ev.keepUntil < t)) return 'done';
+  if (c.received && (!ev.keepUntil || (isDate(ev.keepUntil) && ev.keepUntil < t) || c.cancelledAt)) return 'done';
   if (c.received) return 'keeping';
   if (ev.spendRequired) {
     if (spent(c) >= ev.spendRequired) return 'waiting';
@@ -239,8 +241,8 @@ function cardRow(c) {
     : (ev.title ? esc(ev.title) : '조건 미입력');
   let meta = '';
   if (st === 'filling') meta = `<span>남은 금액 <b>${won(left)}</b></span><span>마감 <b>${dday(ev.spendEnd)}</b></span>`;
-  else if (st === 'waiting') meta = `<span>조건 달성 ✓</span><span>페이백 예정 <b>${fmtD(ev.paybackDue)} ${dday(ev.paybackDue)}</b></span>`;
-  else if (st === 'keeping') meta = `<span>페이백 ${won(c.receivedAmount || ev.payback)} 받음 (${fmtD(c.receivedAt)})</span><span>유지 ~<b>${fmtD(ev.keepUntil)} ${dday(ev.keepUntil)}</b></span>`;
+  else if (st === 'waiting') meta = `<span>조건 달성 ✓</span><span>페이백 예정 <b>${esc(when(ev.paybackDue))}</b></span>`;
+  else if (st === 'keeping') meta = `<span>페이백 ${won(c.receivedAmount || ev.payback)} 받음 (${fmtD(c.receivedAt)})</span><span>유지 ~<b>${esc(when(ev.keepUntil))}</b></span>`;
   else if (st === 'expired') meta = `<span>사용 ${won(sp)} / ${won(ev.spendRequired)}</span><span>마감 ${fmtD(ev.spendEnd)} 지남</span>`;
   else meta = `<span>${c.cancelledAt ? '해지 ' + fmtD(c.cancelledAt) : '페이백 완료'}</span><span>${won(c.receivedAmount || ev.payback)}</span>`;
   return `<div class="card ${st === 'done' || st === 'expired' ? 'dim' : ''}" onclick="openCard('${c.id}')">
@@ -302,7 +304,8 @@ function openCard(id) {
     <div class="grid2">${money('eReq', '사용 조건 금액', ev.spendRequired, '이만큼 써야 페이백')}${inp('eEnd', '사용 마감일', 'date', ev.spendEnd)}</div>
     <div class="grid2">${money('ePay', '페이백 금액', ev.payback)}
       <div class="field"><label>페이백 종류</label><select id="eKind">${['캐시백', '포인트', '상품권', '연회비 면제', '기타'].map((k) => `<option ${ev.paybackKind === k ? 'selected' : ''}>${k}</option>`).join('')}</select></div></div>
-    <div class="grid2">${inp('eDue', '페이백 입금 예정일', 'date', ev.paybackDue)}${inp('eKeep', '카드 유지 기한 (환수 방지)', 'date', ev.keepUntil)}</div>
+    <div class="grid2">${inp('eDue', '페이백 입금 예정', 'text', ev.paybackDue, 'placeholder="예: 10월 중, 익익월 15일, 2026-11-15"')}${inp('eKeep', '카드 유지 기한 (환수 방지)', 'text', ev.keepUntil, 'placeholder="예: 6개월, 2027-04-30"')}</div>
+    <div class="calc" style="margin:-6px 0 10px">정확한 날짜(YYYY-MM-DD)로 적으면 D-day 를 계산하고, "10월 중"처럼 적으면 그대로 보여줘요.</div>
     <div class="field"><label>세부 조항 (이벤트 페이지 글을 그대로 붙여넣기)</label><textarea id="eTerms" placeholder="예: 발급 후 익월 말까지 30만원 이상 이용 시 익익월 15일 캐시백. 6개월 내 해지 시 환수. 공과금·상품권 제외">${esc(ev.terms || '')}</textarea></div>
     <div class="chips" style="margin:-4px 0 10px"><button type="button" onclick="aiReview()">AI에게 주의점 물어보기 → 프롬프트 복사</button></div>
     <div id="aiBox"></div>
