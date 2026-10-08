@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>카드 이벤트 장부</title>
+<meta name="description" content="장기미이용 페이백 이벤트를 노리고 은행을 돌려 쓰는 신용카드의 신청·조건·마감·미이용 기간을 한 장부에서 추적하는 개인용 앱">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f5f5f7; --surface: #ffffff; --line: #e4e5ea; --line-2: #cfd1d9;
+    --ink: #17181c; --ink-2: #585c68; --ink-3: #8c909c;
+    --accent: #5b3fd6; --accent-soft: #ece8fb;
+    --ok: #1a8f5c; --ok-soft: #e3f4ec; --bad: #c8413f; --bad-soft: #fbe8e7; --warn: #9a6b00; --warn-soft: #fff4d6;
+    --font: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', -apple-system, system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #101114; --surface: #17191e; --line: #272a32; --line-2: #353944;
+      --ink: #eef0f3; --ink-2: #a7adb8; --ink-3: #747b88;
+      --accent: #a08cf0; --accent-soft: #241f3f;
+      --ok: #3fc07e; --ok-soft: #143324; --bad: #ef6b69; --bad-soft: #3c1e1d; --warn: #e2b04a; --warn-soft: #3a2f10;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #101114; --surface: #17191e; --line: #272a32; --line-2: #353944;
+    --ink: #eef0f3; --ink-2: #a7adb8; --ink-3: #747b88;
+    --accent: #a08cf0; --accent-soft: #241f3f;
+    --ok: #3fc07e; --ok-soft: #143324; --bad: #ef6b69; --bad-soft: #3c1e1d; --warn: #e2b04a; --warn-soft: #3a2f10;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { height: 100%; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 14px; line-height: 1.45; min-height: 100%; padding-block: 0 env(safe-area-inset-bottom, 0px); }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { background: none; border: 0; cursor: pointer; }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+  .num { font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 0 16px 64px; }
+  header { padding: 22px 0 14px; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+  header h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; }
+  header .sub { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; }
+  .tools { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .tools button, .btn { font-size: 12.5px; font-weight: 600; color: var(--ink-2); padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  .tools button.on { color: var(--ok); border-color: var(--ok-soft); background: var(--ok-soft); }
+  .tools button.err { color: var(--bad); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.danger { color: var(--bad); }
+
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 12px 10px; }
+  .tile .label { font-size: 11.5px; color: var(--ink-3); }
+  .tile .val { font-size: 22px; font-weight: 800; margin-top: 4px; letter-spacing: -0.01em; }
+  .tile .hint { font-size: 11.5px; color: var(--ink-2); margin-top: 3px; }
+  @media (max-width: 400px) { .tiles { grid-template-columns: repeat(3, 1fr); } .tile .val { font-size: 18px; } }
+
+  .tabs { display: flex; gap: 2px; margin-top: 18px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { flex: none; padding: 10px 12px 11px; font-size: 13.5px; font-weight: 600; color: var(--ink-3); border-bottom: 2px solid transparent; margin-bottom: -1px; border-radius: 0; }
+  .tabs button.active { color: var(--ink); border-bottom-color: var(--accent); }
+  .panel { display: none; padding-top: 16px; } .panel.active { display: block; }
+  .sec { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); margin: 8px 0 8px; display: flex; justify-content: space-between; align-items: center; }
+  .sec .btn { text-transform: none; letter-spacing: 0; }
+  .list { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 14px; }
+  .empty { padding: 20px 14px; font-size: 13px; color: var(--ink-3); }
+  .note { font-size: 12px; color: var(--ink-3); line-height: 1.5; margin-top: 8px; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); } .badge.bad { background: var(--bad-soft); color: var(--bad); }
+  .badge.warn { background: var(--warn-soft); color: var(--warn); } .badge.muted { background: var(--line); color: var(--ink-2); }
+  .badge.acc { background: var(--accent-soft); color: var(--accent); }
+
+  /* 카드 행 */
+  .card { padding: 12px 14px; border-top: 1px solid var(--line); cursor: pointer; }
+  .card:first-child { border-top: 0; }
+  .card:hover { background: color-mix(in srgb, var(--accent-soft) 35%, var(--surface)); }
+  .card .top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .card .name { font-size: 15px; font-weight: 700; }
+  .card .name small { font-weight: 500; color: var(--ink-3); font-size: 12px; margin-left: 6px; }
+  .card .cond { font-size: 12.5px; color: var(--ink-2); margin-top: 3px; }
+  .card .cond b { color: var(--ink); }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+  .bar i.done { background: var(--ok); }
+  .card .meta { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--ink-3); margin-top: 5px; flex-wrap: wrap; }
+  .card .meta b { color: var(--ink-2); font-weight: 600; }
+  .card.dim { opacity: 0.6; }
+
+  /* 은행 행 */
+  .bank { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 11px 14px; border-top: 1px solid var(--line); align-items: center; }
+  .bank:first-child { border-top: 0; }
+  .bank .n { font-size: 14px; font-weight: 700; }
+  .bank .s { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+  .bank .d { text-align: right; font-weight: 700; font-size: 14px; }
+  .bank .d small { display: block; font-size: 11px; color: var(--ink-3); font-weight: 500; }
+
+  /* 시트 */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
+  .sheet { width: 100%; max-width: 680px; background: var(--surface); border-radius: 16px 16px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); max-height: 92vh; overflow: auto; }
+  .sheet h2 { font-size: 16px; font-weight: 800; margin-bottom: 12px; }
+  .sheet h4 { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); margin: 14px 0 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .field { display: grid; gap: 4px; margin-bottom: 10px; }
+  .field label { font-size: 12px; color: var(--ink-2); font-weight: 600; }
+  .field input, .field select, .field textarea { width: 100%; padding: 10px 11px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--bg); font-size: 15px; }
+  .field textarea { min-height: 84px; resize: vertical; font-size: 13.5px; line-height: 1.5; }
+  .field .calc { font-size: 12px; color: var(--ink-3); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chips button { font-size: 12px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--ink-2); }
+  .chips button.on { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 700; }
+  .sheet-btns { display: flex; gap: 8px; margin-top: 14px; }
+  .sheet-btns .btn { flex: 1; text-align: center; padding: 11px; font-size: 14px; }
+  .spend { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 7px 0; border-top: 1px solid var(--line); }
+  .spend:first-child { border-top: 0; }
+  .spend .x { color: var(--bad); font-size: 12px; padding: 0 4px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); background: var(--ink); color: var(--bg); padding: 9px 14px; border-radius: 999px; font-size: 13px; opacity: 0; transition: .2s; pointer-events: none; z-index: 60; }
+  .toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1>카드 이벤트 장부</h1><div class="sub" id="subLine">장기미이용 페이백 돌려 쓰기</div></div>
+    <div class="tools">
+      <button type="button" id="syncBtn" onclick="onSyncBtn()">로그인</button>
+      <button type="button" onclick="exportJSON()">백업</button>
+      <button type="button" onclick="document.getElementById('importFile').click()">복원</button>
+      <input type="file" id="importFile" accept="application/json" hidden onchange="importJSON(this.files[0])">
+    </div>
+  </header>
+
+  <div class="tiles" id="tiles"></div>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="now" type="button">진행 중</button>
+    <button class="tab-btn" data-tab="cards" type="button">카드</button>
+    <button class="tab-btn" data-tab="banks" type="button">은행</button>
+    <button class="tab-btn" data-tab="done" type="button">완료</button>
+  </nav>
+
+  <section class="panel active" id="panel-now">
+    <div class="sec"><span>조건 채우는 중</span><span style="display:flex;gap:6px"><button class="btn" type="button" onclick="openAnalyze()">이벤트 글 분석</button><button class="btn primary" type="button" onclick="openCard()">+ 카드 추가</button></span></div>
+    <div class="list" id="nowList"></div>
+    <div class="sec">페이백 기다리는 중 · 유지 조건</div>
+    <div class="list" id="waitList"></div>
+    <p class="note">카드를 누르면 사용액을 추가하거나 조건·세부조항을 고칠 수 있어요. 사용액은 이벤트 조건 집계용이에요.</p>
+  </section>
+
+  <section class="panel" id="panel-cards">
+    <div class="sec"><span>모든 카드</span><button class="btn primary" type="button" onclick="openCard()">+ 카드 추가</button></div>
+    <div class="list" id="cardList"></div>
+  </section>
+
+  <section class="panel" id="panel-banks">
+    <div class="sec">은행별 미이용 기간 · 재신청 가능일</div>
+    <div class="list" id="bankList"></div>
+    <p class="note">은행마다 "장기미이용"의 기준(보통 6개월 또는 12개월)이 달라요. 카드 추가 때 그 은행의 기준을 적으면 여기서 D-day로 보여줘요. 마지막 사용일·해지일 중 늦은 날부터 셉니다.</p>
+  </section>
+
+  <section class="panel" id="panel-done">
+    <div class="sec">페이백 받음 · 해지 완료</div>
+    <div class="list" id="doneList"></div>
+  </section>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="sheetRoot"></div>
+
+<script>
+// ───────────── 저장/상태 ─────────────
+const KEY = 'cards1';
+const defaultState = () => ({ cards: [] });
+// card: { id, bank, name, appliedAt, issuedAt, cancelledAt, lastUsedAt, dormantMonths,
+//         ev: { title, spendRequired, spendStart, spendEnd, payback, paybackKind, paybackDue, keepUntil, terms },
+//         spends: [{id,date,amount,memo}], received: bool, receivedAt, receivedAmount, memo }
+let S = load();
+function load() { try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && Array.isArray(v.cards)) return v; } catch {} return defaultState(); }
+function save() { S.updatedAt = new Date().toISOString(); try { localStorage.setItem(KEY, JSON.stringify(S)); } catch { toast('저장 실패'); } cloudPush(); }
+
+// ───────────── 유틸 ─────────────
+const won = (n) => (n == null || isNaN(n)) ? '—' : Math.round(n).toLocaleString('ko-KR') + '원';
+const manwon = (n) => (Math.round(n / 10000)).toLocaleString('ko-KR') + '만';
+const parseWon = (s) => Number(String(s ?? '').replace(/[^\d.-]/g, '')) || 0;
+const fmtInput = (el) => { const v = parseWon(el.value); el.value = v ? v.toLocaleString('ko-KR') : ''; };
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => Date.now() + Math.random().toString(16).slice(2, 6);
+// 날짜는 항상 한국 시간 기준
+const kstToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const today = () => kstToday();
+const days = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);          // b - a (일)
+const dday = (d) => { if (!d) return ''; const n = days(today(), d); return n === 0 ? 'D-day' : n > 0 ? `D-${n}` : `D+${-n}`; };
+const addMonths = (iso, m) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + m); return d.toISOString().slice(0, 10); };
+const fmtD = (d) => d ? d.slice(2).replace(/-/g, '.') : '—';
+const monthsSince = (iso) => { const n = days(iso, today()); return Math.floor(n / 30.4375); };
+function toast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('on'); setTimeout(() => t.classList.remove('on'), 2200); }
+
+// ───────────── 계산 ─────────────
+const spent = (c) => (c.spends || []).reduce((a, s) => a + (s.amount || 0), 0);
+const lastActivity = (c) => [c.cancelledAt, c.lastUsedAt, ...(c.spends || []).map((s) => s.date)].filter(Boolean).sort().pop() || c.issuedAt || c.appliedAt || null;
+// 카드 상태: filling(조건 채우는 중) / waiting(조건 달성, 페이백 대기) / keeping(페이백 받음, 유지기간 중) / done(끝) / expired(마감 지남)
+function status(c) {
+  const ev = c.ev || {}; const t = today();
+  if (c.received && (!ev.keepUntil || ev.keepUntil < t)) return 'done';
+  if (c.received) return 'keeping';
+  if (ev.spendRequired) {
+    if (spent(c) >= ev.spendRequired) return 'waiting';
+    if (ev.spendEnd && ev.spendEnd < t) return 'expired';
+    return 'filling';
+  }
+  return ev.paybackDue ? 'waiting' : 'filling';
+}
+const STATUS = { filling: ['acc', '조건 채우는 중'], waiting: ['warn', '페이백 대기'], keeping: ['ok', '유지 중'], done: ['muted', '완료'], expired: ['bad', '마감 지남'] };
+
+// 은행별 요약: 마지막 활동일, 미이용 개월, 재신청 가능일
+function banks() {
+  const map = {};
+  for (const c of S.cards) {
+    const b = c.bank || '(은행 미입력)';
+    const la = lastActivity(c);
+    const m = map[b] ??= { bank: b, last: null, dormantMonths: c.dormantMonths || 12, cards: 0, active: 0 };
+    m.cards += 1; if (!c.cancelledAt) m.active += 1;
+    if (la && (!m.last || la > m.last)) m.last = la;
+    if (c.dormantMonths) m.dormantMonths = c.dormantMonths;
+  }
+  return Object.values(map).map((m) => {
+    const eligibleAt = m.last ? addMonths(m.last, m.dormantMonths) : null;
+    return { ...m, eligibleAt, dormant: m.last ? monthsSince(m.last) : null, eligible: eligibleAt ? eligibleAt <= today() : true };
+  }).sort((a, b) => (a.eligibleAt || '').localeCompare(b.eligibleAt || ''));
+}
+
+// ───────────── 렌더 ─────────────
+function cardRow(c) {
+  const ev = c.ev || {}, st = status(c), sp = spent(c);
+  const pct = ev.spendRequired ? Math.min(100, Math.round(sp / ev.spendRequired * 100)) : 0;
+  const left = ev.spendRequired ? Math.max(0, ev.spendRequired - sp) : 0;
+  const condText = ev.spendRequired
+    ? `${fmtD(ev.spendEnd)}까지 <b>${won(ev.spendRequired)}</b> 사용 → <b>${won(ev.payback)}</b> ${esc(ev.paybackKind || '페이백')}`
+    : (ev.title ? esc(ev.title) : '조건 미입력');
+  let meta = '';
+  if (st === 'filling') meta = `<span>남은 금액 <b>${won(left)}</b></span><span>마감 <b>${dday(ev.spendEnd)}</b></span>`;
+  else if (st === 'waiting') meta = `<span>조건 달성 ✓</span><span>페이백 예정 <b>${fmtD(ev.paybackDue)} ${dday(ev.paybackDue)}</b></span>`;
+  else if (st === 'keeping') meta = `<span>페이백 ${won(c.receivedAmount || ev.payback)} 받음 (${fmtD(c.receivedAt)})</span><span>유지 ~<b>${fmtD(ev.keepUntil)} ${dday(ev.keepUntil)}</b></span>`;
+  else if (st === 'expired') meta = `<span>사용 ${won(sp)} / ${won(ev.spendRequired)}</span><span>마감 ${fmtD(ev.spendEnd)} 지남</span>`;
+  else meta = `<span>${c.cancelledAt ? '해지 ' + fmtD(c.cancelledAt) : '페이백 완료'}</span><span>${won(c.receivedAmount || ev.payback)}</span>`;
+  return `<div class="card ${st === 'done' || st === 'expired' ? 'dim' : ''}" onclick="openCard('${c.id}')">
+    <div class="top"><div class="name">${esc(c.bank)}<small>${esc(c.name || '')}</small></div><span class="badge ${STATUS[st][0]}">${STATUS[st][1]}</span></div>
+    <div class="cond">${condText}</div>
+    ${ev.spendRequired && (st === 'filling' || st === 'expired') ? `<div class="bar"><i class="${pct >= 100 ? 'done' : ''}" style="width:${pct}%"></i></div>` : ''}
+    <div class="meta">${meta}<span>신청 ${fmtD(c.appliedAt)}${c.issuedAt ? ' · 발급 ' + fmtD(c.issuedAt) : ''}</span></div>
+  </div>`;
+}
+
+function render() {
+  const cards = S.cards.slice().sort((a, b) => (b.appliedAt || '').localeCompare(a.appliedAt || ''));
+  const by = (sts) => cards.filter((c) => sts.includes(status(c)));
+  const filling = by(['filling']), waiting = by(['waiting', 'keeping']), done = by(['done', 'expired']);
+  const bk = banks();
+  const totalPayback = cards.filter((c) => c.received).reduce((a, c) => a + (c.receivedAmount || c.ev?.payback || 0), 0);
+  const pending = waiting.filter((c) => status(c) === 'waiting').reduce((a, c) => a + (c.ev?.payback || 0), 0);
+  const nextDeadline = filling.map((c) => c.ev?.spendEnd).filter(Boolean).sort()[0];
+
+  document.getElementById('subLine').textContent = `카드 ${cards.length}장 · 은행 ${bk.length}곳 · 지금 신청 가능 ${bk.filter((b) => b.eligible).length}곳`;
+  document.getElementById('tiles').innerHTML = `
+    <div class="tile"><div class="label">받은 페이백 누계</div><div class="val num">${manwon(totalPayback)}</div><div class="hint">${cards.filter((c) => c.received).length}건</div></div>
+    <div class="tile"><div class="label">받을 예정</div><div class="val num">${manwon(pending)}</div><div class="hint">조건 달성 ${waiting.filter((c) => status(c) === 'waiting').length}건</div></div>
+    <div class="tile"><div class="label">가장 급한 마감</div><div class="val num">${nextDeadline ? dday(nextDeadline) : '—'}</div><div class="hint">${nextDeadline ? fmtD(nextDeadline) : '진행 중 없음'}</div></div>`;
+
+  document.getElementById('nowList').innerHTML = filling.length ? filling.sort((a, b) => (a.ev?.spendEnd || '9').localeCompare(b.ev?.spendEnd || '9')).map(cardRow).join('') : '<div class="empty">조건 채우는 카드가 없어요. 지금 신청 가능한 은행은 “은행” 탭에서.</div>';
+  document.getElementById('waitList').innerHTML = waiting.length ? waiting.map(cardRow).join('') : '<div class="empty">페이백 기다리는 카드가 없어요.</div>';
+  document.getElementById('cardList').innerHTML = cards.length ? cards.map(cardRow).join('') : '<div class="empty">“+ 카드 추가”로 첫 카드를 넣어보세요.</div>';
+  document.getElementById('doneList').innerHTML = done.length ? done.map(cardRow).join('') : '<div class="empty">아직 없어요.</div>';
+
+  document.getElementById('bankList').innerHTML = bk.length ? bk.map((b) => `<div class="bank">
+      <div><div class="n">${esc(b.bank)} ${b.eligible ? '<span class="badge ok">신청 가능</span>' : ''}${b.active ? ` <span class="badge acc">보유 ${b.active}</span>` : ''}</div>
+        <div class="s">마지막 활동 ${fmtD(b.last)} · 미이용 ${b.dormant ?? '—'}개월째 · 기준 ${b.dormantMonths}개월</div></div>
+      <div class="d num">${b.eligibleAt ? (b.eligible ? '가능' : dday(b.eligibleAt)) : '가능'}<small>${b.eligibleAt ? fmtD(b.eligibleAt) + '부터' : '기록 없음'}</small></div>
+    </div>`).join('') : '<div class="empty">카드를 추가하면 은행별로 정리돼요.</div>';
+}
+
+// ───────────── 시트 ─────────────
+function sheet(html) { document.getElementById('sheetRoot').innerHTML = `<div class="overlay" onclick="if(event.target===this)closeSheet()"><div class="sheet">${html}</div></div>`; }
+function closeSheet() { document.getElementById('sheetRoot').innerHTML = ''; }
+const inp = (id, label, type, val, extra = '') => `<div class="field"><label>${label}</label><input id="${id}" type="${type}" value="${esc(val ?? '')}" ${extra}></div>`;
+const money = (id, label, val, hint = '') => `<div class="field"><label>${label}</label><input id="${id}" type="text" inputmode="numeric" value="${val ? Number(val).toLocaleString('ko-KR') : ''}" onblur="fmtInput(this)">${hint ? `<div class="calc">${hint}</div>` : ''}</div>`;
+
+function openCard(id) {
+  const c = id ? S.cards.find((x) => x.id === id) : { id: '', bank: '', name: '', appliedAt: today(), issuedAt: '', cancelledAt: '', lastUsedAt: '', dormantMonths: 12, ev: { paybackKind: '캐시백' }, spends: [], received: false, receivedAt: '', receivedAmount: 0, memo: '' };
+  if (!c) return; const ev = c.ev || {};
+  const banksKnown = [...new Set(S.cards.map((x) => x.bank).filter(Boolean))];
+  sheet(`<h2>${id ? '카드 수정' : '카드 추가'}</h2>
+    <div class="grid2">${inp('cBank', '은행 / 카드사', 'text', c.bank, `list="bankList" placeholder="예: 신한카드"`)}${inp('cName', '카드명', 'text', c.name, 'placeholder="예: Deep Dream"')}</div>
+    <datalist id="bankList">${banksKnown.map((b) => `<option value="${esc(b)}">`).join('')}</datalist>
+    <div class="grid2">${inp('cApplied', '신청일', 'date', c.appliedAt)}${inp('cIssued', '발급일', 'date', c.issuedAt)}</div>
+    <div class="grid2">
+      <div class="field"><label>이 은행 장기미이용 기준</label><select id="cDormant">${[6, 12, 18, 24].map((m) => `<option value="${m}" ${(c.dormantMonths || 12) === m ? 'selected' : ''}>${m}개월</option>`).join('')}</select></div>
+      ${inp('cLastUsed', '마지막 사용일 (수동)', 'date', c.lastUsedAt)}
+    </div>
+
+    <h4>이벤트 조건</h4>
+    ${inp('eTitle', '이벤트 이름', 'text', ev.title, 'placeholder="예: 장기미이용 고객 10만원 캐시백"')}
+    <div class="grid2">${money('eReq', '사용 조건 금액', ev.spendRequired, '이만큼 써야 페이백')}${inp('eEnd', '사용 마감일', 'date', ev.spendEnd)}</div>
+    <div class="grid2">${money('ePay', '페이백 금액', ev.payback)}
+      <div class="field"><label>페이백 종류</label><select id="eKind">${['캐시백', '포인트', '상품권', '연회비 면제', '기타'].map((k) => `<option ${ev.paybackKind === k ? 'selected' : ''}>${k}</option>`).join('')}</select></div></div>
+    <div class="grid2">${inp('eDue', '페이백 입금 예정일', 'date', ev.paybackDue)}${inp('eKeep', '카드 유지 기한 (환수 방지)', 'date', ev.keepUntil)}</div>
+    <div class="field"><label>세부 조항 (이벤트 페이지 글을 그대로 붙여넣기)</label><textarea id="eTerms" placeholder="예: 발급 후 익월 말까지 30만원 이상 이용 시 익익월 15일 캐시백. 6개월 내 해지 시 환수. 공과금·상품권 제외">${esc(ev.terms || '')}</textarea></div>
+    <div class="chips" style="margin:-4px 0 10px"><button type="button" onclick="aiReview()">AI에게 주의점 물어보기 → 프롬프트 복사</button></div>
+    <div id="aiBox"></div>
+
+    <h4>사용액 기록 <span style="font-weight:500;color:var(--ink-3);text-transform:none;letter-spacing:0">(조건 집계용 · 합계 ${won(spent(c))})</span></h4>
+    <div id="spendList">${(c.spends || []).slice().sort((a, b) => b.date.localeCompare(a.date)).map((s) => `<div class="spend"><span>${fmtD(s.date)} ${esc(s.memo || '')}</span><span class="num">${won(s.amount)} ${id ? `<button type="button" class="x" onclick="delSpend('${id}','${s.id}')">삭제</button>` : ''}</span></div>`).join('') || '<div class="note" style="margin:0">아직 없음</div>'}</div>
+    ${id ? `<div class="grid2" style="margin-top:8px">${inp('sDate', '날짜', 'date', today())}${money('sAmt', '금액', 0)}</div>
+      <div class="grid2" style="align-items:end">${inp('sMemo', '메모', 'text', '', 'placeholder="예: 마트"')}<button class="btn" type="button" style="padding:10px" onclick="addSpend('${id}')">+ 사용액 추가</button></div>` : '<div class="note">카드를 먼저 저장하면 사용액을 추가할 수 있어요.</div>'}
+
+    <h4>결과</h4>
+    <div class="chips" style="margin-bottom:10px">
+      <button type="button" id="rNo" class="${!c.received ? 'on' : ''}" onclick="setReceived(false)">아직 못 받음</button>
+      <button type="button" id="rYes" class="${c.received ? 'on' : ''}" onclick="setReceived(true)">페이백 받음</button></div>
+    <div class="grid2" id="recvFields" ${c.received ? '' : 'hidden'}>${inp('rAt', '받은 날', 'date', c.receivedAt || today())}${money('rAmt', '받은 금액', c.receivedAmount || ev.payback)}</div>
+    ${inp('cCancelled', '해지일 (해지했으면)', 'date', c.cancelledAt)}
+    ${inp('cMemo', '메모', 'text', c.memo, 'placeholder="예: 앱 설치 필수, 상담원 통해 신청"')}
+    <div class="sheet-btns">
+      ${id ? `<button class="btn danger" type="button" onclick="delCard('${id}')">삭제</button>` : ''}
+      <button class="btn" type="button" onclick="closeSheet()">취소</button>
+      <button class="btn primary" type="button" onclick="saveCard('${id}')">저장</button></div>`);
+  window._recv = !!c.received;
+}
+function setReceived(v) { window._recv = v; document.getElementById('rYes').classList.toggle('on', v); document.getElementById('rNo').classList.toggle('on', !v); document.getElementById('recvFields').hidden = !v; }
+function readCard(id) {
+  const g = (i) => document.getElementById(i).value.trim();
+  const prev = id ? S.cards.find((x) => x.id === id) : null;
+  return {
+    id: id || uid(), bank: g('cBank'), name: g('cName'), appliedAt: g('cApplied'), issuedAt: g('cIssued'), cancelledAt: g('cCancelled'), lastUsedAt: g('cLastUsed'),
+    dormantMonths: Number(g('cDormant')) || 12,
+    ev: { title: g('eTitle'), spendRequired: parseWon(g('eReq')), spendEnd: g('eEnd'), payback: parseWon(g('ePay')), paybackKind: g('eKind'), paybackDue: g('eDue'), keepUntil: g('eKeep'), terms: document.getElementById('eTerms').value.trim() },
+    spends: prev?.spends || [], received: !!window._recv, receivedAt: window._recv ? g('rAt') : '', receivedAmount: window._recv ? parseWon(g('rAmt')) : 0, memo: g('cMemo'),
+  };
+}
+function saveCard(id) {
+  const c = readCard(id);
+  if (!c.bank) return toast('은행/카드사를 입력하세요');
+  if (id) S.cards = S.cards.map((x) => x.id === id ? c : x); else S.cards.push(c);
+  save(); render(); closeSheet(); toast(id ? '수정됐어요' : '추가됐어요');
+}
+function delCard(id) { if (!confirm('이 카드 기록을 삭제할까요?')) return; S.cards = S.cards.filter((x) => x.id !== id); save(); render(); closeSheet(); toast('삭제했어요'); }
+function addSpend(id) {
+  const c = S.cards.find((x) => x.id === id); if (!c) return;
+  const amt = parseWon(document.getElementById('sAmt').value); if (!amt) return toast('금액을 입력하세요');
+  // 시트의 다른 수정 내용도 함께 저장한 뒤 사용액을 붙인다
+  const updated = readCard(id); updated.spends = [...(c.spends || []), { id: uid(), date: document.getElementById('sDate').value || today(), amount: amt, memo: document.getElementById('sMemo').value.trim() }];
+  S.cards = S.cards.map((x) => x.id === id ? updated : x); save(); render(); openCard(id); toast('사용액 추가');
+}
+function delSpend(id, sid) { const c = S.cards.find((x) => x.id === id); if (!c) return; c.spends = (c.spends || []).filter((s) => s.id !== sid); save(); render(); openCard(id); }
+
+// ───────────── AI 분석 (프롬프트 복사 → claude.ai) ─────────────
+// 페이지에 API 키를 넣으면 공개되므로, 조건 글 + 체크리스트를 프롬프트로 묶어 복사만 한다.
+function buildPrompt(terms, ctx) {
+  return `아래는 신용카드 이벤트(장기미이용 고객 페이백 등)의 조건 글이야. 나는 이런 이벤트를 받으려고 여러 은행 카드를 돌려가며 쓰는 사람이고, 오늘은 ${today()}야.
+${ctx ? '\n[내 상황]\n' + ctx + '\n' : ''}
+[이벤트 조건 원문]
+${terms}
+
+이 글을 읽고 아래 형식으로 정리해줘. 조건 글에 없는 내용은 추측하지 말고 "원문에 없음"이라고 써.
+1. 핵심 요약: 얼마를 / 언제부터 언제까지 / 어떻게 써야 / 얼마를 / 언제 받는지 (날짜는 구체적으로 계산)
+2. 제외 항목: 실적에서 빠지는 결제 (공과금, 상품권, 세금, 무이자할부, 해외, 간편결제 등)
+3. 함정·주의점: 환수 조건(해지·탈회 시), 유지 기간, "익월 말" 같은 기간 해석, 신청 절차(응모 필요 여부, 앱 설치, 마케팅 동의), 다른 이벤트와 중복 불가, 전월 실적 기준일
+4. 내가 해야 할 일 체크리스트: 날짜 순으로 (신청 → 사용 마감 → 페이백 확인 → 유지 기한 → 해지 가능일)
+5. 이 조건에서 "장기미이용"의 정의가 있으면 기준 기간과 기준일(해지일 기준인지 마지막 이용일 기준인지)`;
+}
+async function copyPrompt(text, boxId) {
+  const box = document.getElementById(boxId);
+  const done = () => { box.innerHTML = `<div class="note" style="margin:6px 0 10px;padding:10px 12px;background:var(--accent-soft);border-radius:9px;color:var(--ink-2)">프롬프트가 복사됐어요. <a href="https://claude.ai/new" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700">Claude.ai 열기 →</a> 새 대화에 붙여넣으면 주의점을 정리해줘요. 답변의 날짜·금액은 이 카드 조건 칸에 옮겨 적으세요.</div>`; };
+  try { await navigator.clipboard.writeText(text); done(); }
+  catch { box.innerHTML = `<div class="field"><label>복사가 안 되면 아래를 직접 복사하세요</label><textarea readonly style="min-height:120px;font-size:12px">${esc(text)}</textarea></div><a href="https://claude.ai/new" target="_blank" rel="noopener" class="btn" style="display:inline-block">Claude.ai 열기 →</a>`; }
+}
+function aiReview() {
+  const terms = document.getElementById('eTerms').value.trim();
+  if (!terms) return toast('세부 조항 칸에 이벤트 글을 먼저 붙여넣으세요');
+  const g = (i) => document.getElementById(i)?.value?.trim() || '';
+  const ctx = [g('cBank') && `은행/카드: ${g('cBank')} ${g('cName')}`, g('cApplied') && `신청일: ${g('cApplied')}`, g('cIssued') && `발급일: ${g('cIssued')}`].filter(Boolean).join('\n');
+  copyPrompt(buildPrompt(terms, ctx), 'aiBox');
+}
+function openAnalyze() {
+  sheet(`<h2>이벤트 글 분석</h2>
+    <p class="note" style="margin:0 0 10px">카드사 이벤트 페이지의 조건 글을 통째로 붙여넣으면, 주의점을 물어보는 프롬프트를 만들어 복사해요. 신청 전에 함정을 미리 보는 용도.</p>
+    <div class="field"><textarea id="anTerms" style="min-height:160px" placeholder="이벤트 조건 글 붙여넣기"></textarea></div>
+    <div id="anBox"></div>
+    <div class="sheet-btns"><button class="btn" type="button" onclick="closeSheet()">닫기</button><button class="btn primary" type="button" onclick="(function(){const t=document.getElementById('anTerms').value.trim(); if(!t) return toast('글을 붙여넣으세요'); copyPrompt(buildPrompt(t,''),'anBox');})()">프롬프트 복사</button></div>`);
+}
+
+// ───────────── 백업/복원 ─────────────
+function exportJSON() { const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `카드장부-${today()}.json`; a.click(); URL.revokeObjectURL(a.href); }
+function importJSON(file) { if (!file) return; const r = new FileReader(); r.onload = () => { try { const v = JSON.parse(r.result); if (!Array.isArray(v.cards)) throw 0; S = v; save(); render(); toast('복원했어요'); } catch { toast('파일 형식이 맞지 않아요'); } }; r.readAsText(file); }
+
+// ───────────── 클라우드 동기화 (선택) — 등록금 장부와 같은 방식, 같은 계정 ─────────────
+const SB_URL = 'https://wblndotsbuejihjembjz.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndibG5kb3RzYnVlamloamVtYmp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5MTczODksImV4cCI6MjEwNTQ5MzM4OX0.BvPUSn3afCpe5LkhIcygwENtf6pNZPGfvRDLR2Q1eBQ';   // anon 공개 키 (데이터는 로그인 토큰 + RLS 로만 접근)
+const TABLE = 'cards';
+const AUTH_KEY = 'cards_auth';
+let session = (() => { try { return JSON.parse(localStorage.getItem(AUTH_KEY)) || JSON.parse(localStorage.getItem('ledger_auth')); } catch { return null; } })();   // 등록금 장부 로그인 상태를 재사용
+const saveSession = (x) => { session = x; try { x ? localStorage.setItem(AUTH_KEY, JSON.stringify(x)) : localStorage.removeItem(AUTH_KEY); } catch {} };
+async function authPost(path, body, token) {
+  const headers = { apikey: SB_KEY, 'Content-Type': 'application/json' }; if (token) headers.Authorization = 'Bearer ' + token;
+  const res = await fetch(`${SB_URL}/auth/v1/${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
+  const j = await res.json().catch(() => ({})); if (!res.ok) throw new Error(j.msg || j.error_description || j.error || ('HTTP ' + res.status)); return j;
+}
+const packSession = (j) => ({ access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + ((j.expires_in || 3600) * 1000), email: j.user && j.user.email });
+async function getToken() {
+  if (!session) return null;
+  if (Date.now() > session.expires_at - 60000) { try { saveSession(packSession(await authPost('token?grant_type=refresh_token', { refresh_token: session.refresh_token }))); } catch { saveSession(null); setSyncUI('로그인 만료', 'err'); return null; } }
+  return session.access_token;
+}
+function setSyncUI(text, cls) { const b = document.getElementById('syncBtn'); b.textContent = text; b.className = cls || ''; }
+let pushTimer = null, pushing = false;
+function cloudPush() {
+  if (!session) return; clearTimeout(pushTimer);
+  pushTimer = setTimeout(async () => {
+    const token = await getToken(); if (!token) return; pushing = true; setSyncUI('저장 중…');
+    try {
+      const res = await fetch(`${SB_URL}/rest/v1/${TABLE}?on_conflict=user_id`, { method: 'POST', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ data: S, updated_at: S.updatedAt }) });
+      if (res.status === 401) { saveSession(null); setSyncUI('로그인', ''); return; }
+      if (!res.ok) throw new Error(await res.text());
+      setSyncUI('☁ ' + new Date().toTimeString().slice(0, 5), 'on');
+    } catch (e) { console.error('cloudPush', e); setSyncUI('동기화 실패', 'err'); } finally { pushing = false; }
+  }, 600);
+}
+async function cloudPull(reason) {
+  const token = await getToken(); if (!token) return;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/${TABLE}?select=data,updated_at&limit=1`, { headers: { apikey: SB_KEY, Authorization: 'Bearer ' + token } });
+    if (res.status === 401) { saveSession(null); setSyncUI('로그인', ''); return; }
+    if (!res.ok) throw new Error(await res.text());
+    const rows = await res.json();
+    if (!rows.length) { cloudPush(); setSyncUI('☁ 첫 동기화', 'on'); return; }
+    const cloud = rows[0], cloudAt = cloud.data?.updatedAt || cloud.updated_at || '', localAt = S.updatedAt || '';
+    if (cloudAt > localAt || !S.cards.length) { S = cloud.data; try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} render(); toast(reason === 'login' ? '클라우드 장부를 불러왔어요' : '다른 기기의 변경을 받았어요'); }
+    else if (localAt > cloudAt) cloudPush();
+    setSyncUI('☁ ' + new Date().toTimeString().slice(0, 5), 'on');
+  } catch (e) { console.error('cloudPull', e); setSyncUI('동기화 실패', 'err'); }
+}
+function onSyncBtn() {
+  if (!session) return openLogin();
+  sheet(`<h2>클라우드 동기화</h2><p class="note" style="margin:0 0 12px">${esc(session.email || '')} 로 로그인됨. 저장할 때마다 올라가고, 다른 기기에서 열면 최신 저장이 내려와요.</p>
+    <div class="sheet-btns"><button class="btn danger" type="button" onclick="signOut()">로그아웃</button><button class="btn" type="button" onclick="closeSheet();cloudPull('manual')">지금 동기화</button><button class="btn primary" type="button" onclick="closeSheet()">닫기</button></div>`);
+}
+function openLogin() {
+  sheet(`<h2>로그인</h2><p class="note" style="margin:0 0 12px">발 통증 일기·등록금 장부와 같은 계정. 로그인 없이도 이 기기에서는 계속 쓸 수 있어요.</p>
+    <form onsubmit="return doLogin(event)">
+      <div class="field"><label>이메일</label><input id="lEmail" type="email" autocomplete="username" required></div>
+      <div class="field"><label>비밀번호</label><input id="lPw" type="password" autocomplete="current-password" required></div>
+      <div class="note" id="lErr" style="color:var(--bad);min-height:18px;margin:0"></div>
+      <div class="sheet-btns"><button class="btn" type="button" onclick="closeSheet()">취소</button><button class="btn primary" type="submit" id="lBtn">로그인</button></div></form>`);
+  setTimeout(() => document.getElementById('lEmail')?.focus(), 50);
+}
+async function doLogin(e) {
+  e.preventDefault(); const btn = document.getElementById('lBtn'), err = document.getElementById('lErr'); btn.disabled = true; btn.textContent = '확인 중…'; err.textContent = '';
+  try { saveSession(packSession(await authPost('token?grant_type=password', { email: document.getElementById('lEmail').value.trim(), password: document.getElementById('lPw').value }))); closeSheet(); await cloudPull('login'); }
+  catch (ex) { err.textContent = /invalid|credentials/i.test(ex.message) ? '이메일 또는 비밀번호가 틀렸어요' : '로그인 실패: ' + ex.message; }
+  finally { btn.disabled = false; btn.textContent = '로그인'; } return false;
+}
+async function signOut() { try { if (session) await authPost('logout', {}, session.access_token); } catch {} saveSession(null); closeSheet(); setSyncUI('로그인', ''); toast('로그아웃했어요 (이 기기 데이터는 유지)'); }
+
+// ───────────── 탭/부팅 ─────────────
+function selectTab(name) { document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === name)); document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === 'panel-' + name)); }
+document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => selectTab(b.dataset.tab)));
+render();
+if (session) { setSyncUI('☁ 확인 중', 'on'); cloudPull('boot'); }
+document.addEventListener('visibilitychange', () => { if (!document.hidden && session && !pushing) cloudPull('resume'); });
+</script>
+</body>
+</html>
