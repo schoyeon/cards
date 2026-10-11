@@ -170,12 +170,12 @@
 <script>
 // ───────────── 저장/상태 ─────────────
 const KEY = 'cards1';
-const defaultState = () => ({ cards: [] });
+const defaultState = () => ({ cards: [], deleted: {} });   // deleted: {id: 삭제시각} — 기기 간 합칠 때 되살아나지 않게
 // card: { id, bank, name, appliedAt, issuedAt, cancelledAt, lastUsedAt, dormantMonths,
 //         ev: { title, spendRequired, spendStart, spendEnd, payback, paybackKind, paybackDue, keepUntil, terms },
 //         spends: [{id,date,amount,memo}], received: bool, receivedAt, receivedAmount, memo }
 let S = load();
-function load() { try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && Array.isArray(v.cards)) return v; } catch {} return defaultState(); }
+function load() { try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && Array.isArray(v.cards)) { v.deleted ??= {}; return v; } } catch {} return defaultState(); }
 function save() { S.updatedAt = new Date().toISOString(); try { localStorage.setItem(KEY, JSON.stringify(S)); } catch { toast('저장 실패'); } cloudPush(); }
 
 // ───────────── 유틸 ─────────────
@@ -337,6 +337,7 @@ function readCard(id) {
     dormantMonths: Number(g('cDormant')) || 12,
     ev: { title: g('eTitle'), spendRequired: parseWon(g('eReq')), spendEnd: g('eEnd'), payback: parseWon(g('ePay')), paybackKind: g('eKind'), paybackDue: g('eDue'), keepUntil: g('eKeep'), terms: document.getElementById('eTerms').value.trim() },
     spends: prev?.spends || [], received: !!window._recv, receivedAt: window._recv ? g('rAt') : '', receivedAmount: window._recv ? parseWon(g('rAmt')) : 0, memo: g('cMemo'),
+    at: new Date().toISOString(),
   };
 }
 function saveCard(id) {
@@ -345,7 +346,7 @@ function saveCard(id) {
   if (id) S.cards = S.cards.map((x) => x.id === id ? c : x); else S.cards.push(c);
   save(); render(); closeSheet(); toast(id ? '수정됐어요' : '추가됐어요');
 }
-function delCard(id) { if (!confirm('이 카드 기록을 삭제할까요?')) return; S.cards = S.cards.filter((x) => x.id !== id); save(); render(); closeSheet(); toast('삭제했어요'); }
+function delCard(id) { if (!confirm('이 카드 기록을 삭제할까요?')) return; S.cards = S.cards.filter((x) => x.id !== id); S.deleted[id] = new Date().toISOString(); save(); render(); closeSheet(); toast('삭제했어요'); }
 function addSpend(id) {
   const c = S.cards.find((x) => x.id === id); if (!c) return;
   const amt = parseWon(document.getElementById('sAmt').value); if (!amt) return toast('금액을 입력하세요');
@@ -353,7 +354,7 @@ function addSpend(id) {
   const updated = readCard(id); updated.spends = [...(c.spends || []), { id: uid(), date: document.getElementById('sDate').value || today(), amount: amt, memo: document.getElementById('sMemo').value.trim() }];
   S.cards = S.cards.map((x) => x.id === id ? updated : x); save(); render(); openCard(id); toast('사용액 추가');
 }
-function delSpend(id, sid) { const c = S.cards.find((x) => x.id === id); if (!c) return; c.spends = (c.spends || []).filter((s) => s.id !== sid); save(); render(); openCard(id); }
+function delSpend(id, sid) { const c = S.cards.find((x) => x.id === id); if (!c) return; c.spends = (c.spends || []).filter((s) => s.id !== sid); c.at = new Date().toISOString(); save(); render(); openCard(id); }
 
 // ───────────── AI 분석 (프롬프트 복사 → claude.ai) ─────────────
 // 페이지에 API 키를 넣으면 공개되므로, 조건 글 + 체크리스트를 프롬프트로 묶어 복사만 한다.
@@ -393,7 +394,7 @@ function openAnalyze() {
 
 // ───────────── 백업/복원 ─────────────
 function exportJSON() { const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `카드장부-${today()}.json`; a.click(); URL.revokeObjectURL(a.href); }
-function importJSON(file) { if (!file) return; const r = new FileReader(); r.onload = () => { try { const v = JSON.parse(r.result); if (!Array.isArray(v.cards)) throw 0; S = v; save(); render(); toast('복원했어요'); } catch { toast('파일 형식이 맞지 않아요'); } }; r.readAsText(file); }
+function importJSON(file) { if (!file) return; const r = new FileReader(); r.onload = () => { try { const v = JSON.parse(r.result); if (!Array.isArray(v.cards)) throw 0; v.deleted ??= {}; S = v; save(); render(); toast('복원했어요'); } catch { toast('파일 형식이 맞지 않아요'); } }; r.readAsText(file); }
 
 // ───────────── 클라우드 동기화 (선택) — 등록금 장부와 같은 방식, 같은 계정 ─────────────
 const SB_URL = 'https://wblndotsbuejihjembjz.supabase.co';
@@ -414,6 +415,18 @@ async function getToken() {
   return session.access_token;
 }
 function setSyncUI(text, cls) { const b = document.getElementById('syncBtn'); b.textContent = text; b.className = cls || ''; }
+// ---- 기록(카드) 단위 합치기: 같은 id 는 더 최근(at) 것, 한쪽에만 있으면 유지, 삭제 표식이 더 최근이면 삭제 ----
+const syncLog = [];
+const logSync = (m) => { syncLog.unshift(new Date().toTimeString().slice(0, 8) + ' ' + m); syncLog.length = Math.min(syncLog.length, 8); };
+function mergeState(local, cloud) {
+  const deleted = { ...(cloud.deleted || {}), ...(local.deleted || {}) };
+  for (const k of Object.keys(deleted)) if ((cloud.deleted || {})[k] > deleted[k]) deleted[k] = cloud.deleted[k];
+  const m = new Map();
+  for (const r of [...(local.cards || []), ...(cloud.cards || [])]) { const prev = m.get(r.id); if (!prev || (r.at || '') > (prev.at || '')) m.set(r.id, r); }
+  const cards = [...m.values()].filter((r) => !(deleted[r.id] && deleted[r.id] > (r.at || '')));
+  return { ...local, cards, deleted, updatedAt: [local.updatedAt, cloud.updatedAt].filter(Boolean).sort().pop() };
+}
+
 let pushTimer = null, pushing = false;
 function cloudPush() {
   if (!session) return; clearTimeout(pushTimer);
@@ -423,8 +436,9 @@ function cloudPush() {
       const res = await fetch(`${SB_URL}/rest/v1/${TABLE}?on_conflict=user_id`, { method: 'POST', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ data: S, updated_at: S.updatedAt }) });
       if (res.status === 401) { saveSession(null); setSyncUI('로그인', ''); return; }
       if (!res.ok) throw new Error(await res.text());
+      logSync(`올림 · 카드 ${S.cards.length}장`);
       setSyncUI('☁ ' + new Date().toTimeString().slice(0, 5), 'on');
-    } catch (e) { console.error('cloudPush', e); setSyncUI('동기화 실패', 'err'); } finally { pushing = false; }
+    } catch (e) { console.error('cloudPush', e); logSync('올리기 실패: ' + e.message.slice(0, 60)); setSyncUI('동기화 실패', 'err'); } finally { pushing = false; }
   }, 600);
 }
 async function cloudPull(reason) {
@@ -434,16 +448,23 @@ async function cloudPull(reason) {
     if (res.status === 401) { saveSession(null); setSyncUI('로그인', ''); return; }
     if (!res.ok) throw new Error(await res.text());
     const rows = await res.json();
-    if (!rows.length) { cloudPush(); setSyncUI('☁ 첫 동기화', 'on'); return; }
-    const cloud = rows[0], cloudAt = cloud.data?.updatedAt || cloud.updated_at || '', localAt = S.updatedAt || '';
-    if (cloudAt > localAt || !S.cards.length) { S = cloud.data; try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} render(); toast(reason === 'login' ? '클라우드 장부를 불러왔어요' : '다른 기기의 변경을 받았어요'); }
-    else if (localAt > cloudAt) cloudPush();
+    if (!rows.length) { logSync('클라우드 비어 있음 → 올림'); cloudPush(); setSyncUI('☁ 첫 동기화', 'on'); return; }
+    const cloud = rows[0].data || {}; cloud.cards ??= []; cloud.deleted ??= {};
+    const before = JSON.stringify(S), merged = mergeState(S, cloud);
+    const changedLocal = JSON.stringify(merged) !== before;
+    const cloudLacks = JSON.stringify(merged.cards) !== JSON.stringify(cloud.cards);
+    S = merged;
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {}
+    logSync(`합침(${reason}) · 로컬 ${JSON.parse(before).cards.length} + 클라우드 ${cloud.cards.length} → ${S.cards.length}장`);
+    if (changedLocal) { render(); toast(reason === 'login' ? '클라우드 장부와 합쳤어요' : '다른 기기의 변경을 합쳤어요'); }
+    if (cloudLacks) cloudPush();
     setSyncUI('☁ ' + new Date().toTimeString().slice(0, 5), 'on');
   } catch (e) { console.error('cloudPull', e); setSyncUI('동기화 실패', 'err'); }
 }
 function onSyncBtn() {
   if (!session) return openLogin();
-  sheet(`<h2>클라우드 동기화</h2><p class="note" style="margin:0 0 12px">${esc(session.email || '')} 로 로그인됨. 저장할 때마다 올라가고, 다른 기기에서 열면 최신 저장이 내려와요.</p>
+  sheet(`<h2>클라우드 동기화</h2><p class="note" style="margin:0 0 12px">${esc(session.email || '')} 로 로그인됨. 저장할 때마다 올라가고, 다른 기기와는 카드 단위로 합쳐요(같은 카드는 더 최근 것).</p>
+    <div class="list" style="padding:10px 12px;font-size:12px;color:var(--ink-2);line-height:1.7">${syncLog.length ? syncLog.map(esc).join('<br>') : '아직 동기화 기록 없음'}</div>
     <div class="sheet-btns"><button class="btn danger" type="button" onclick="signOut()">로그아웃</button><button class="btn" type="button" onclick="closeSheet();cloudPull('manual')">지금 동기화</button><button class="btn primary" type="button" onclick="closeSheet()">닫기</button></div>`);
 }
 function openLogin() {
