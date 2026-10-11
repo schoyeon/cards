@@ -287,6 +287,7 @@ const inp = (id, label, type, val, extra = '') => `<div class="field"><label>${l
 const money = (id, label, val, hint = '') => `<div class="field"><label>${label}</label><input id="${id}" type="text" inputmode="numeric" value="${val ? Number(val).toLocaleString('ko-KR') : ''}" onblur="fmtInput(this)">${hint ? `<div class="calc">${hint}</div>` : ''}</div>`;
 
 function openCard(id) {
+  id = id || '';   // 인자 없이 부르면 undefined 가 템플릿에 'undefined' 로 들어가 수정 경로로 빠지는 버그 방지
   const c = id ? S.cards.find((x) => x.id === id) : { id: '', bank: '', name: '', appliedAt: today(), issuedAt: '', cancelledAt: '', lastUsedAt: '', dormantMonths: 12, ev: { paybackKind: '캐시백' }, spends: [], received: false, receivedAt: '', receivedAmount: 0, memo: '' };
   if (!c) return; const ev = c.ev || {};
   const banksKnown = [...new Set(S.cards.map((x) => x.bank).filter(Boolean))];
